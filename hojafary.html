@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Cuentas Interactivo con IA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .table-cell {
+            padding: 12px 16px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .header-cell {
+            padding: 12px 16px;
+            background-color: #f3f4f6;
+            font-weight: 600;
+            color: #374151;
+            white-space: nowrap;
+        }
+        #notification, #reminder-modal {
+            transition: opacity 0.3s, transform 0.3s;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #4f46e5;
+            animation: spin 1s ease infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-full">
+
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Gestor de Cuentas Inteligente</h1>
+            <p class="text-gray-600 mt-1">Administra tus préstamos, registra abonos y genera recordatorios de pago con IA.</p>
+        </header>
+
+        <!-- Formulario para agregar nuevas cuentas -->
+        <div class="bg-white p-6 rounded-xl shadow-md mb-8">
+            <h2 class="text-xl font-semibold mb-4">Agregar Nueva Cuenta</h2>
+            <form id="add-account-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label for="deudor" class="block text-sm font-medium text-gray-700">Deudor</label>
+                    <input type="text" id="deudor" name="deudor" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="prestamo" class="block text-sm font-medium text-gray-700">Préstamo Inicial ($)</label>
+                    <input type="number" id="prestamo" name="prestamo" min="0" step="0.01" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="tasa" class="block text-sm font-medium text-gray-700">Tasa de Interés (%)</label>
+                    <input type="number" id="tasa" name="tasa" min="0" value="0" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                </div>
+                <button type="submit" class="w-full sm:w-auto lg:w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Agregar Cuenta
+                </button>
+            </form>
+        </div>
+
+        <!-- Tabla de cuentas -->
+        <div class="bg-white rounded-xl shadow-md overflow-x-auto">
+            <table class="w-full text-sm text-left text-gray-500">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                    <tr>
+                        <th class="header-cell">Deudor</th>
+                        <th class="header-cell text-right">Préstamo</th>
+                        <th class="header-cell text-right">Tasa (%)</th>
+                        <th class="header-cell text-right">Interés (Quincena)</th>
+                        <th class="header-cell text-right">Deuda Total</th>
+                        <th class="header-cell text-right">Total Pagado</th>
+                        <th class="header-cell text-right">Capital Pendiente</th>
+                        <th class="header-cell text-right">Saldo Pendiente</th>
+                        <th class="header-cell text-center">Comprobante</th>
+                        <th class="header-cell text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-table-body"></tbody>
+                <tfoot class="bg-gray-100 font-semibold">
+                    <tr>
+                        <td class="table-cell">TOTALES</td>
+                        <td id="total-prestamo" class="table-cell text-right"></td>
+                        <td class="table-cell"></td>
+                        <td id="total-interes" class="table-cell text-right"></td>
+                        <td id="total-deuda" class="table-cell text-right"></td>
+                        <td id="total-pagado" class="table-cell text-right"></td>
+                        <td id="total-capital-pendiente" class="table-cell text-right"></td>
+                        <td id="total-saldo" class="table-cell text-right"></td>
+                        <td class="table-cell"></td>
+                        <td class="table-cell"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    
+    <input type="file" id="file-input" class="hidden" accept="image/*,.pdf">
+
+    <!-- Modal para el recordatorio de IA -->
+    <div id="reminder-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
+            <div class="p-6">
+                <div class="flex justify-between items-start">
+                    <h3 class="text-lg font-semibold text-gray-900">✨ Recordatorio Inteligente</h3>
+                    <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600">&times;</button>
+                </div>
+                <div id="spinner-container" class="flex justify-center items-center h-48">
+                    <div class="spinner"></div>
+                </div>
+                <div id="reminder-content" class="mt-4 hidden">
+                    <p class="text-sm text-gray-600 mb-2">Este es el mensaje sugerido por la IA. Puedes copiarlo o editarlo.</p>
+                    <textarea id="reminder-text" rows="6" class="w-full p-2 border border-gray-300 rounded-md"></textarea>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-xl">
+                <button id="copy-text-btn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm hover:bg-indigo-700">Copiar Texto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor para la notificación -->
+    <div id="notification" class="fixed bottom-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-xl opacity-0 transform translate-y-10"></div>
+
+    <script>
+        // --- DATOS INICIALES ---
+        let accounts = [
+          { id: 1, deudor: 'Ale (con interés)', prestamo: 630, tasa: 10, pagado: 0, comprobante: '' },
+          { id: 2, deudor: 'Ale (sin interés)', prestamo: 200, tasa: 0, pagado: 0, comprobante: '' },
+          { id: 3, deudor: 'Sra. Susan (otra)', prestamo: 120, tasa: 15, pagado: 0, comprobante: '' },
+          { id: 4, deudor: 'Señora Amalia Solis', prestamo: 100, tasa: 15, pagado: 0, comprobante: '' },
+          { id: 5, deudor: 'Mingo', prestamo: 100, tasa: 20, pagado: 0, comprobante: '' },
+          { id: 6, deudor: 'Hilda', prestamo: 100, tasa: 10, pagado: 0, comprobante: '' },
+          { id: 7, deudor: 'Tía Yansi', prestamo: 100, tasa: 10, pagado: 0, comprobante: '' },
+          { id: 8, deudor: 'Susan', prestamo: 30, tasa: 10, pagado: 0, comprobante: '' }
+        ];
+
+        const form = document.getElementById('add-account-form');
+        const tableBody = document.getElementById('accounts-table-body');
+        const fileInput = document.getElementById('file-input');
+        const reminderModal = document.getElementById('reminder-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const copyTextBtn = document.getElementById('copy-text-btn');
+        const reminderText = document.getElementById('reminder-text');
+        const spinnerContainer = document.getElementById('spinner-container');
+        const reminderContent = document.getElementById('reminder-content');
+        let currentFileIndex = -1;
+
+        function formatCurrency(amount) {
+            return `$${amount.toFixed(2)}`;
+        }
+
+        function showNotification(message, isError = false) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.remove('bg-green-500', 'bg-red-500');
+            notification.classList.add(isError ? 'bg-red-500' : 'bg-green-500');
+            notification.classList.remove('opacity-0', 'translate-y-10');
+            setTimeout(() => {
+                notification.classList.add('opacity-0', 'translate-y-10');
+            }, 3000);
+        }
+
+        function renderTable() {
+            tableBody.innerHTML = '';
+            let totalPrestamo = 0, totalInteres = 0, totalDeuda = 0, totalPagado = 0, totalSaldo = 0, totalCapitalPendiente = 0;
+
+            if (accounts.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="10" class="text-center p-8 text-gray-500">No hay cuentas registradas.</td></tr>`;
+            }
+
+            accounts.forEach((acc, index) => {
+                const interes = acc.prestamo * (acc.tasa / 100);
+                const deudaTotal = acc.prestamo + interes;
+                const saldoPendiente = deudaTotal - acc.pagado;
+
+                // Lógica para el capital pendiente
+                const interesTotalGenerado = acc.prestamo * (acc.tasa / 100);
+                const pagadoAInteres = Math.min(acc.pagado, interesTotalGenerado);
+                const pagadoACapital = acc.pagado - pagadoAInteres;
+                const capitalPendiente = acc.prestamo - pagadoACapital;
+
+                totalPrestamo += acc.prestamo;
+                totalInteres += interes;
+                totalDeuda += deudaTotal;
+                totalPagado += acc.pagado;
+                totalSaldo += saldoPendiente;
+                totalCapitalPendiente += capitalPendiente;
+
+                const row = document.createElement('tr');
+                row.className = 'bg-white border-b hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="table-cell font-medium text-gray-900">${acc.deudor}</td>
+                    <td class="table-cell text-right">${formatCurrency(acc.prestamo)}</td>
+                    <td class="table-cell text-right font-medium text-gray-700">${acc.tasa}%</td>
+                    <td class="table-cell text-right text-red-600">${formatCurrency(interes)}</td>
+                    <td class="table-cell text-right font-semibold">${formatCurrency(deudaTotal)}</td>
+                    <td class="table-cell text-right text-green-600">${formatCurrency(acc.pagado)}</td>
+                    <td class="table-cell text-right font-bold text-blue-700">${formatCurrency(capitalPendiente)}</td>
+                    <td class="table-cell text-right font-bold text-indigo-700">${formatCurrency(saldoPendiente)}</td>
+                    <td class="table-cell text-center">
+                        ${acc.comprobante ? `<span class="text-xs text-gray-500 italic" title="${acc.comprobante}">${acc.comprobante.substring(0, 10)}...</span>` : `<button onclick="attachReceipt(${index})" class="p-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-xs">Adjuntar</button>`}
+                    </td>
+                    <td class="table-cell">
+                        <div class="flex items-center justify-center gap-2">
+                            <input type="number" min="0" step="0.01" class="w-20 rounded-md border-gray-300 shadow-sm text-sm p-1.5" placeholder="Abono">
+                            <button onclick="addPayment(${index})" class="p-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200" title="Registrar Pago">Pagar</button>
+                            <button onclick="generateReminder(${index})" class="p-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200" title="Generar Recordatorio con IA">✨</button>
+                            <button onclick="deleteAccount(${index})" class="p-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200" title="Eliminar Cuenta">X</button>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            document.getElementById('total-prestamo').textContent = formatCurrency(totalPrestamo);
+            document.getElementById('total-interes').textContent = formatCurrency(totalInteres);
+            document.getElementById('total-deuda').textContent = formatCurrency(totalDeuda);
+            document.getElementById('total-pagado').textContent = formatCurrency(totalPagado);
+            document.getElementById('total-capital-pendiente').textContent = formatCurrency(totalCapitalPendiente);
+            document.getElementById('total-saldo').textContent = formatCurrency(totalSaldo);
+        }
+
+        function addAccount(event) {
+            event.preventDefault();
+            const deudor = form.deudor.value.trim();
+            const prestamo = parseFloat(form.prestamo.value);
+            const tasa = parseFloat(form.tasa.value);
+
+            if (!deudor || isNaN(prestamo) || isNaN(tasa)) {
+                showNotification('Por favor, completa todos los campos correctamente.', true);
+                return;
+            }
+
+            accounts.push({ id: Date.now(), deudor, prestamo, tasa, pagado: 0, comprobante: '' });
+            form.reset();
+            renderTable();
+            showNotification('¡Cuenta agregada exitosamente!');
+        }
+
+        window.deleteAccount = function(index) {
+            if (confirm(`¿Estás seguro de que quieres eliminar la cuenta de "${accounts[index].deudor}"?`)) {
+                accounts.splice(index, 1);
+                renderTable();
+                showNotification('Cuenta eliminada.');
+            }
+        }
+
+        window.addPayment = function(index) {
+            const input = tableBody.rows[index].querySelector('input[type="number"]');
+            const amount = parseFloat(input.value);
+
+            if (isNaN(amount) || amount <= 0) {
+                showNotification('Por favor, ingresa un monto de abono válido.', true);
+                return;
+            }
+            
+            const account = accounts[index];
+            const saldoPendiente = (account.prestamo * (1 + account.tasa / 100)) - account.pagado;
+
+            if (amount > saldoPendiente) {
+                 if (!confirm(`El abono de ${formatCurrency(amount)} es mayor que el saldo pendiente de ${formatCurrency(saldoPendiente)}. ¿Deseas continuar?`)) {
+                    return;
+                }
+            }
+
+            account.pagado += amount;
+            input.value = '';
+            renderTable();
+            showNotification(`¡Abono de ${formatCurrency(amount)} registrado!`);
+        }
+        
+        // --- Funciones para adjuntar archivo (simulado) ---
+        window.attachReceipt = function(index) {
+            currentFileIndex = index;
+            fileInput.click();
+        }
+
+        fileInput.addEventListener('change', function(event) {
+            if (currentFileIndex === -1 || !event.target.files[0]) return;
+            
+            const file = event.target.files[0];
+            accounts[currentFileIndex].comprobante = file.name;
+            showNotification(`Comprobante "${file.name}" adjuntado.`);
+            renderTable();
+            
+            // Resetear para poder adjuntar el mismo archivo de nuevo
+            currentFileIndex = -1;
+            fileInput.value = '';
+        });
+
+        function closeModal() {
+            reminderModal.classList.add('hidden');
+        }
+
+        function copyReminderText() {
+            reminderText.select();
+            try {
+                document.execCommand('copy');
+                showNotification('¡Texto copiado al portapapeles!');
+                closeModal();
+            } catch (err) {
+                showNotification('Error al copiar el texto.', true);
+            }
+        }
+        
+        // --- Gemini API Feature ---
+        window.generateReminder = async function(index) {
+            const account = accounts[index];
+            const saldoPendiente = (account.prestamo * (1 + account.tasa / 100)) - account.pagado;
+
+            if (saldoPendiente <= 0) {
+                showNotification('Esta cuenta ya ha sido saldada.', true);
+                return;
+            }
+
+            reminderModal.classList.remove('hidden');
+            spinnerContainer.classList.remove('hidden');
+            reminderContent.classList.add('hidden');
+            reminderText.value = '';
+
+            const prompt = `Escribe un mensaje de recordatorio de pago amigable y breve para enviar por WhatsApp a "${account.deudor}". El saldo pendiente es de ${formatCurrency(saldoPendiente)}. El tono debe ser cordial pero claro. No incluyas saludos como "Hola" al inicio, empieza directamente el mensaje.`;
+
+            try {
+                const apiKey = ""; // La clave será proporcionada por el entorno
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }]
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error de la API: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0) {
+                    const generatedText = result.candidates[0].content.parts[0].text;
+                    reminderText.value = generatedText.trim();
+                } else {
+                    throw new Error("No se recibió una respuesta válida de la IA.");
+                }
+
+            } catch (error) {
+                console.error("Error al generar recordatorio:", error);
+                reminderText.value = "Hubo un error al generar el mensaje. Por favor, inténtalo de nuevo.";
+            } finally {
+                spinnerContainer.classList.add('hidden');
+                reminderContent.classList.remove('hidden');
+            }
+        }
+
+        // --- INICIALIZACIÓN ---
+        form.addEventListener('submit', addAccount);
+        closeModalBtn.addEventListener('click', closeModal);
+        copyTextBtn.addEventListener('click', copyReminderText);
+        renderTable();
+    </script>
+</body>
+</html>
